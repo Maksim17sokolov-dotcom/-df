@@ -9,7 +9,7 @@ import io
 # ============================================================
 # ТОКЕН
 # ============================================================
-TOKEN = "8901567796:AAFPXou6PCvysgXnv2jcf-7yrNAvXNIaDJY"
+TOKEN = "8687718580:AAE_uMnb9CrRBDER8cqi4f-xwzBrcfh_kQM"
 bot = telebot.TeleBot(TOKEN)
 
 app = Flask(__name__)
