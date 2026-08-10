@@ -128,7 +128,23 @@ def grab():
         return jsonify({"error": str(e)}), 500
 
 # ============================================================
+# WEBHOOK — ПРИНИМАЕТ ОБНОВЛЕНИЯ ОТ TELEGRAM
+# ============================================================
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    json_str = request.get_data().decode('UTF-8')
+    update = telebot.types.Update.de_json(json_str)
+    bot.process_new_updates([update])
+    return "OK", 200
+
+# ============================================================
 # ЗАПУСК
 # ============================================================
 if __name__ == '__main__':
+    # Устанавливаем webhook при старте
+    webhook_url = "https://df-1-qkfy.onrender.com/webhook"
+    bot.remove_webhook()
+    bot.set_webhook(url=webhook_url)
+    print(f"[+] Webhook set to: {webhook_url}")
+    
     app.run(host='0.0.0.0', port=10000)
